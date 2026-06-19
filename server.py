@@ -1,0 +1,267 @@
+"""academic-intel-mcp — academic research intelligence for autonomous agents.
+
+Part of the FoundryNet Data Network. Papers from OpenAlex (primary) + arXiv +
+PubMed, embedded with fastembed for pgvector similar-paper search. 7 tools + free
+mint_info. Free tier 25/day, then x402 (USDC on Solana). Daily ingest ~4am PT.
+Transport: Streamable HTTP at /mcp (+ /sse). Health: /health.
+"""
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import inspect
+import logging
+import time
+
+from fastmcp import FastMCP
+from starlette.requests import Request
+from starlette.responses import JSONResponse
+
+import academic_aggregator as agg
+import config
+import core
+import identity
+import payment_gate
+import supa
+import tools
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logger = logging.getLogger("acad.mcp")
+
+if not supa.configured():
+    logger.warning("SUPABASE_SERVICE_KEY not set — dataset disabled until configured.")
+
+mcp = FastMCP("academic-intel")
+
+if payment_gate.is_active():
+    logger.info(f"pay-per-query ARMED → {config.PAYMENT_RECIPIENT} after {config.FREE_TIER_DAILY}/day free")
+else:
+    logger.info("pay-per-query INERT — all tools free")
+
+tools.register_all(mcp)
+
+
+@mcp.custom_route("/health", methods=["GET"])
+async def health(request: Request) -> JSONResponse:
+    return JSONResponse({
+        "status": "ok", "service": "academic-intel-mcp", "transport": "streamable-http",
+        "network": "FoundryNet Data Network",
+        "tools": ["search_papers", "paper_detail", "citation_graph", "author_profile",
+                  "trending_research", "similar_papers", "mint_info"],
+        "dataset": "supabase:papers" if supa.configured() else "unconfigured",
+        "sources": "openalex + arxiv + pubmed (keyless)" + (" + semantic_scholar" if config.S2_API_KEY else ""),
+        "embeddings": config.EMBED_MODEL,
+        "x402_enabled": config.X402_ENABLED,
+        "query_payment": "armed" if payment_gate.is_active() else "free",
+        "free_tier_daily": config.FREE_TIER_DAILY,
+        "payment_recipient": config.PAYMENT_RECIPIENT,
+    })
+
+
+@mcp.custom_route("/ping", methods=["GET"])
+async def ping(request: Request) -> JSONResponse:
+    return JSONResponse({"status": "ok"})
+
+
+# ── REST surface ─────────────────────────────────────────────────────────────
+_ERR = {"bad_request": 400, "not_configured": 503, "not_found": 404,
+        "payment_required": 402, "embedding_unavailable": 503}
+
+
+def _resp(d: dict) -> JSONResponse:
+    if "error" not in d:
+        return JSONResponse(d, status_code=200)
+    err = str(d.get("error") or "")
+    code = _ERR.get(err, 502 if err in ("network", "non_json_response", "unreachable") else 400)
+    if err.startswith("http_") and err[5:].isdigit():
+        code = int(err[5:])
+    return JSONResponse(d, status_code=code)
+
+
+async def _body(request: Request) -> dict:
+    try:
+        b = await request.json()
+        return b if isinstance(b, dict) else {}
+    except Exception:
+        return {}
+
+
+def _akey(request: Request, body: dict) -> str:
+    return identity.resolve_agent_key(body.get("agent_id"), request=request)
+
+
+@mcp.custom_route("/v1/search", methods=["POST"])
+async def rest_search(request: Request) -> JSONResponse:
+    b = await _body(request)
+    filters = {k: b.get(k) for k in ("query", "year_from", "year_to", "field", "venue",
+                                     "min_citations", "open_access_only", "limit")}
+    return _resp(await core.do_search(filters, agent_key=_akey(request, b),
+                                      payment_tx=b.get("payment_tx"), api_key=identity.bearer(request)))
+
+
+@mcp.custom_route("/v1/paper", methods=["POST"])
+async def rest_paper(request: Request) -> JSONResponse:
+    b = await _body(request)
+    return _resp(await core.do_detail(b.get("paper_id"), b.get("doi"), b.get("title")))
+
+
+@mcp.custom_route("/v1/citations", methods=["POST"])
+async def rest_citations(request: Request) -> JSONResponse:
+    b = await _body(request)
+    return _resp(await core.do_citation_graph(b.get("paper_id", ""), b.get("direction", "citations"),
+                                              b.get("depth", 1), agent_key=_akey(request, b),
+                                              payment_tx=b.get("payment_tx"), api_key=identity.bearer(request)))
+
+
+@mcp.custom_route("/v1/author", methods=["POST"])
+async def rest_author(request: Request) -> JSONResponse:
+    b = await _body(request)
+    return _resp(await core.do_author(b.get("author_name"), b.get("author_id"),
+                                      agent_key=_akey(request, b), payment_tx=b.get("payment_tx"),
+                                      api_key=identity.bearer(request)))
+
+
+@mcp.custom_route("/v1/trending", methods=["POST"])
+async def rest_trending(request: Request) -> JSONResponse:
+    b = await _body(request)
+    return _resp(await core.do_trending(b.get("field"), b.get("days", 30), b.get("metric", "citations"),
+                                        agent_key=_akey(request, b), payment_tx=b.get("payment_tx"),
+                                        api_key=identity.bearer(request)))
+
+
+@mcp.custom_route("/v1/similar", methods=["POST"])
+async def rest_similar(request: Request) -> JSONResponse:
+    b = await _body(request)
+    return _resp(await core.do_similar(b.get("query"), b.get("paper_id"),
+                                       agent_key=_akey(request, b), payment_tx=b.get("payment_tx"),
+                                       api_key=identity.bearer(request)))
+
+
+@mcp.custom_route("/v1/mint-info", methods=["GET", "POST"])
+async def rest_mint(request: Request) -> JSONResponse:
+    return JSONResponse(core.mint_info())
+
+
+@mcp.custom_route("/admin/aggregate", methods=["POST"])
+async def admin_aggregate(request: Request) -> JSONResponse:
+    import os
+    tok = os.environ.get("ADMIN_TOKEN", "")
+    if not tok or request.headers.get("x-admin-token") != tok:
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    qp = request.query_params
+    hours = int(qp["hours"]) if qp.get("hours", "").isdigit() else None
+    if qp.get("wait") == "1":
+        return JSONResponse(await agg.run_aggregation(hours))
+    asyncio.create_task(agg.run_aggregation(hours))
+    return JSONResponse({"started": True, "hours": hours})
+
+
+# ── Discovery ────────────────────────────────────────────────────────────────
+_TAGLINE = "Academic paper search, citations, authors & semantic related-work for agents."
+_DESC = ("Academic research intelligence for agents: academic paper search, scientific literature, "
+         "citation analysis, arXiv search, author metrics, trending research, and semantic related-work "
+         "discovery (pgvector). Part of the FoundryNet Data Network — attest research with MINT "
+         "Protocol; see also gov-contracts, brand-intel, patent-intel, financial-signals, weather-intel, "
+         "compliance, cyber-intel.")
+_KEYWORDS = ["academic papers", "research search", "scientific literature", "citation analysis",
+             "arXiv search", "paper search", "literature review"]
+
+_AGENT_CARD = {
+    "name": "Academic Research Intelligence MCP", "description": _DESC,
+    "url": "https://github.com/FoundryNet/academic-intel-mcp",
+    "capabilities": ["academic_papers", "research_search", "scientific_literature",
+                     "citation_analysis", "arxiv_search", "literature_review"],
+    "network": "FoundryNet Data Network",
+    "protocols": {"mcp": {"endpoint": config.PUBLIC_MCP_URL, "transport": "streamable-http", "tools_count": 7},
+                  "x402": {"supported": True, "currency": "USDC", "network": "solana"}},
+    "see_also": config.SISTER_SERVERS, "mint_protocol": config.MINT_MCP_URL,
+    "contact": "hello@foundrynet.io",
+}
+
+
+@mcp.custom_route("/.well-known/agent-card.json", methods=["GET"])
+async def agent_card(request: Request) -> JSONResponse:
+    return JSONResponse(_AGENT_CARD, headers={"Cache-Control": "public, max-age=300"})
+
+
+@mcp.custom_route("/.well-known/mcp", methods=["GET"])
+async def mcp_endpoints(request: Request) -> JSONResponse:
+    return JSONResponse({"endpoints": [{"url": config.PUBLIC_MCP_URL, "transport": "streamable-http",
+                                        "name": "Academic Research Intelligence MCP"}]},
+                        headers={"Cache-Control": "public, max-age=300"})
+
+
+async def _live_tools() -> list:
+    res = mcp.list_tools()
+    if inspect.iscoroutine(res):
+        res = await res
+    return [{"name": t.name, "description": (getattr(t, "description", "") or "").strip(),
+             "inputSchema": getattr(t, "parameters", None) or {"type": "object"}} for t in res]
+
+
+@mcp.custom_route("/.well-known/mcp/server-card.json", methods=["GET"])
+async def server_card(request: Request) -> JSONResponse:
+    live = await _live_tools()
+    return JSONResponse({
+        "serverInfo": {"name": "Academic Research Intelligence MCP", "version": "1.0.0"},
+        "authentication": {"type": "http", "scheme": "bearer",
+                           "description": ("paper_detail and mint_info are free; other tools give 25 free "
+                                           "queries/day then take an fnet_ Bearer key OR x402 USDC.")},
+        "tools": live, "version": "1.0", "name": "Academic Research Intelligence MCP",
+        "tagline": _TAGLINE, "description": _DESC,
+        "serverUrl": config.PUBLIC_MCP_URL, "transport": "streamable-http",
+        "tools_count": len(live),
+        "categories": ["research", "academic", "data", "science", "literature"],
+        "keywords": _KEYWORDS, "network": "FoundryNet Data Network",
+        "see_also": config.SISTER_SERVERS,
+        "pricing": {"model": "metered",
+                    "free_tier": f"{config.FREE_TIER_DAILY} queries/day + free paper_detail",
+                    "paid_from": f"{config.PRICE_SEARCH} USDC per query (x402)"},
+    }, headers={"Cache-Control": "public, max-age=300"})
+
+
+# ── Daily aggregation (~4am PT = AGG_HOUR_UTC) ───────────────────────────────
+async def _agg_loop():
+    while True:
+        now = time.gmtime()
+        secs = now.tm_hour * 3600 + now.tm_min * 60 + now.tm_sec
+        wait = (config.AGG_HOUR_UTC * 3600 - secs) % 86400 or 86400
+        try:
+            await asyncio.sleep(wait)
+            if supa.configured():
+                await agg.run_aggregation()
+        except asyncio.CancelledError:
+            break
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"agg loop: {e}")
+            await asyncio.sleep(3600)
+
+
+def build_dual_app():
+    main_app = mcp.http_app(transport="http", path="/mcp")
+    sse_app = mcp.http_app(transport="sse", path="/sse")
+    for r in sse_app.routes:
+        if getattr(r, "path", None) in ("/sse", "/messages"):
+            main_app.router.routes.append(r)
+    main_life, sse_life = main_app.router.lifespan_context, sse_app.router.lifespan_context
+
+    @contextlib.asynccontextmanager
+    async def _dual_lifespan(app):
+        async with main_life(app):
+            async with sse_life(app):
+                task = asyncio.create_task(_agg_loop())
+                try:
+                    yield
+                finally:
+                    task.cancel()
+                    with contextlib.suppress(Exception):
+                        await task
+    main_app.router.lifespan_context = _dual_lifespan
+    return main_app
+
+
+if __name__ == "__main__":
+    import uvicorn
+    logger.info(f"academic-intel-mcp starting on 0.0.0.0:{config.PORT} "
+                f"(dataset={'supabase' if supa.configured() else 'off'}, x402={config.X402_ENABLED})")
+    uvicorn.run(build_dual_app(), host="0.0.0.0", port=config.PORT, log_level="warning")

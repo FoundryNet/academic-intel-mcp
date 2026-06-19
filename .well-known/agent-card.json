@@ -1,0 +1,25 @@
+{
+  "name": "Academic Research Intelligence MCP",
+  "description": "Academic research intelligence for agents: paper search, scientific literature, citation analysis, arXiv search, author metrics, and semantic related-work discovery. Part of the FoundryNet Data Network.",
+  "url": "https://github.com/FoundryNet/academic-intel-mcp",
+  "capabilities": [
+    "academic_papers", "research_search", "scientific_literature",
+    "citation_analysis", "arxiv_search", "literature_review"
+  ],
+  "network": "FoundryNet Data Network",
+  "see_also": {
+    "gov-contracts-mcp": "https://gov-contracts-mcp-production.up.railway.app/mcp",
+    "brand-intel-mcp": "https://brand-intel-mcp-production.up.railway.app/mcp",
+    "patent-intel-mcp": "https://patent-intel-mcp-production.up.railway.app/mcp",
+    "financial-signals-mcp": "https://financial-signals-mcp-production.up.railway.app/mcp",
+    "weather-intel-mcp": "https://weather-intel-mcp-production.up.railway.app/mcp",
+    "compliance-mcp": "https://compliance-mcp-production.up.railway.app/mcp",
+    "cyber-intel-mcp": "https://cyber-intel-mcp-production.up.railway.app/mcp"
+  },
+  "mint_protocol": "https://mint-mcp-production.up.railway.app/mcp",
+  "protocols": {
+    "mcp": { "endpoint": "https://academic-intel-mcp-production.up.railway.app/mcp", "transport": "streamable-http", "tools_count": 7 },
+    "x402": { "supported": true, "currency": "USDC", "network": "solana" }
+  },
+  "contact": "hello@foundrynet.io"
+}

@@ -1,0 +1,18 @@
+name: "@foundrynet/academic-intel"
+displayName: "Academic Research Intelligence MCP"
+description: >-
+  Academic research intelligence for AI agents — academic paper search, scientific
+  literature, citation analysis, arXiv search, author metrics, trending research,
+  and semantic related-work discovery (pgvector). Built on OpenAlex, arXiv, and
+  PubMed. Part of the FoundryNet Data Network. Free tier then x402 (USDC on Solana).
+startCommand:
+  type: http
+  url: "https://academic-intel-mcp-production.up.railway.app/mcp"
+  transport: streamable-http
+  configSchema:
+    type: object
+    properties:
+      api_key:
+        type: string
+        title: "Forge billing key (optional)"
+        description: "fnet_ key to bypass the per-query x402 paywall and bill to a Forge account."
