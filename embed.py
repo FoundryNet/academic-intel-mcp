@@ -44,7 +44,9 @@ def embed_many(texts: list) -> list:
         return out
     try:
         m = _get_model()
-        vecs = list(m.embed([texts[i] for i in idx]))
+        # parallel=1 disables fastembed's worker pool, which can deadlock on
+        # macOS fork; batched single-process is plenty fast for our volumes.
+        vecs = list(m.embed([texts[i] for i in idx], batch_size=64, parallel=1))
         for j, i in enumerate(idx):
             out[i] = [float(x) for x in vecs[j]]
     except Exception as e:  # noqa: BLE001
