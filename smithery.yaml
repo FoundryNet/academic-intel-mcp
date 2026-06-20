@@ -1,10 +1,38 @@
-name: "@foundrynet/academic-intel"
-displayName: "Academic Research Intelligence MCP"
+name: "@foundrynet/academic-intel-mcp"
+displayName: "FoundryNet Academic Intelligence"
 description: >-
-  Academic research intelligence for AI agents — academic paper search, scientific
-  literature, citation analysis, arXiv search, author metrics, trending research,
-  and semantic related-work discovery (pgvector). Built on OpenAlex, arXiv, and
-  PubMed. Part of the FoundryNet Data Network. Free tier then x402 (USDC on Solana).
+  Research paper search across Semantic Scholar, arXiv, and PubMed with citation analysis, author profiles, and semantic similar-paper discovery.
+icon: "🎓"
+homepage: "https://foundrynet.io"
+repository: "https://github.com/FoundryNet/academic-intel-mcp"
+license: "MIT"
+categories:
+  - research
+  - data
+  - education
+tags:
+  - research-papers
+  - academic-search
+  - arxiv
+  - pubmed
+  - semantic-scholar
+  - citation-analysis
+  - literature-review
+keywords:
+  - research-papers
+  - academic-search
+  - arxiv
+  - pubmed
+  - semantic-scholar
+  - citation-analysis
+  - literature-review
+attestation:
+  protocol: "MINT Protocol"
+  verified_outputs: true
+  live_feed: "https://mint.foundrynet.io/feed"
+network:
+  name: "FoundryNet Data Network"
+  servers: 17
 startCommand:
   type: http
   url: "https://academic-intel-mcp-production.up.railway.app/mcp"
