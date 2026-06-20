@@ -12,8 +12,9 @@ def register(mcp) -> None:
         agent_id: Optional[str] = None,
         payment_tx: Optional[str] = None,
     ) -> dict:
-        """Author profile — h-index, paper count, total citations, primary field,
-        affiliation, and recent papers. Resolved from OpenAlex.
+        """Analyze an author's research profile from OpenAlex — h-index, paper count,
+        total citations, primary field, affiliation, and recent papers. Citation
+        analysis for evaluating academic authors in a literature review.
 
         PAID: $0.01 USDC per query after the daily free allowance (25/day). On a
         402, pay the returned Solana memo and re-call with the SAME args plus

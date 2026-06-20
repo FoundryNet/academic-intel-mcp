@@ -10,9 +10,9 @@ def register(mcp) -> None:
         doi: Optional[str] = None,
         title: Optional[str] = None,
     ) -> dict:
-        """Full record for a paper — abstract, all authors, venue, year, citation +
-        reference counts, open-access PDF link, TLDR (when available). FREE. Provide
-        a paper_id, a DOI, or a title.
+        """Get the full record for an academic paper from OpenAlex, arXiv, or PubMed —
+        abstract, authors, venue, year, citation and reference counts, open-access PDF
+        link, and TLDR when available. FREE. Provide a paper_id, a DOI, or a title.
 
         Args:
             paper_id: source paper id (e.g. an OpenAlex Wxxxx or arXiv id).

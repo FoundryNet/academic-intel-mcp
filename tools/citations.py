@@ -13,9 +13,9 @@ def register(mcp) -> None:
         agent_id: Optional[str] = None,
         payment_tx: Optional[str] = None,
     ) -> dict:
-        """Citation graph for a paper — the papers citing it ("citations") or the
-        papers it references ("references"), via live OpenAlex. Citation analysis for
-        tracing influence and prior work.
+        """Analyze the citation graph for a paper via live OpenAlex — list the papers
+        citing it ("citations") or the papers it references ("references"). Citation
+        analysis for tracing influence and prior work in a literature review.
 
         PAID: $0.01 USDC per query after the daily free allowance (25/day). On a
         402, pay the returned Solana memo and re-call with the SAME args plus

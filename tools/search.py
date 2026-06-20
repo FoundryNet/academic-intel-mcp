@@ -18,9 +18,9 @@ def register(mcp) -> None:
         agent_id: Optional[str] = None,
         payment_tx: Optional[str] = None,
     ) -> dict:
-        """Search academic papers / scientific literature by query, year range,
-        field, venue, citation count, or open-access — for research and literature
-        review. Returns title, authors, abstract, citation count (sorted by cites).
+        """Search academic papers across OpenAlex, arXiv, and PubMed for literature
+        reviews — filter by query, year, field, venue, citation count, or open access.
+        Returns title, authors, abstract, and citation count (sorted by citations).
 
         PAID: $0.01 USDC per query after a daily free allowance (25/day). On a 402,
         pay the returned Solana memo and re-call with the SAME args plus

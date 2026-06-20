@@ -166,13 +166,22 @@ _DESC = ("Academic research intelligence for agents: academic paper search, scie
 _KEYWORDS = ["academic papers", "research search", "scientific literature", "citation analysis",
              "arXiv search", "paper search", "literature review"]
 
+_TOOL_NAMES = ["search_papers", "paper_detail", "citation_graph", "author_profile",
+               "trending_research", "similar_papers", "mint_info"]
+
 _AGENT_CARD = {
-    "name": "Academic Research Intelligence MCP", "description": _DESC,
-    "url": "https://github.com/FoundryNet/academic-intel-mcp",
-    "capabilities": ["academic_papers", "research_search", "scientific_literature",
-                     "citation_analysis", "arxiv_search", "literature_review"],
+    "name": "Academic Research Intelligence MCP",
+    "description": ("Search academic papers, citations, and authors, and find related work with "
+                    "semantic similarity — across OpenAlex, arXiv, and PubMed — for literature reviews."),
+    "url": config.PUBLIC_MCP_URL,
+    "version": "1.0.0",
+    "capabilities": {"tools": _TOOL_NAMES},
+    "provider": {"name": "FoundryNet", "url": "https://foundrynet.io"},
     "network": "FoundryNet Data Network",
-    "protocols": {"mcp": {"endpoint": config.PUBLIC_MCP_URL, "transport": "streamable-http", "tools_count": 7},
+    "attestation": {"protocol": "MINT Protocol", "endpoint": config.MINT_MCP_URL,
+                    "verified_outputs": True, "live_feed": "https://mint.foundrynet.io/feed", "feed_api": "https://mint-mcp-production.up.railway.app/v1/feed"},
+    "protocols": {"mcp": {"endpoint": config.PUBLIC_MCP_URL, "transport": "streamable-http",
+                          "tools_count": len(_TOOL_NAMES)},
                   "x402": {"supported": True, "currency": "USDC", "network": "solana"}},
     "see_also": config.SISTER_SERVERS, "mint_protocol": config.MINT_MCP_URL,
     "contact": "hello@foundrynet.io",
@@ -235,6 +244,29 @@ async def _agg_loop():
         except Exception as e:  # noqa: BLE001
             logger.warning(f"agg loop: {e}")
             await asyncio.sleep(3600)
+
+
+_FREE_TOOL_NAMES = {"mint_info", "detail"}
+
+
+@mcp.custom_route("/.well-known/mcp.json", methods=["GET"])
+async def wellknown_mcp_json(request: Request) -> JSONResponse:
+    """Machine-discovery card (emerging standard) for AI clients/crawlers."""
+    live = await _live_tools()
+    names = [t["name"] for t in live]
+    return JSONResponse({
+        "name": _AGENT_CARD["name"],
+        "description": _AGENT_CARD["description"],
+        "url": config.PUBLIC_MCP_URL,
+        "transport": ["streamable-http"],
+        "tools": names,
+        "pricing": {"model": "per-query", "free_tier": True,
+                    "paid_tools": [n for n in names if n not in _FREE_TOOL_NAMES]},
+        "attestation": {"enabled": True, "protocol": "MINT Protocol",
+                        "feed": "https://mint.foundrynet.io/feed"},
+        "network": {"name": "FoundryNet Data Network", "servers": 17,
+                    "homepage": "https://foundrynet.io"},
+    }, headers={"Cache-Control": "public, max-age=300"})
 
 
 def build_dual_app():

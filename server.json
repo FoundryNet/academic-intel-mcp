@@ -2,8 +2,12 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.FoundryNet/academic-intel-mcp",
   "title": "Academic Research Intelligence MCP",
-  "description": "Academic paper search, scientific literature, citation analysis, arXiv & semantic related-work.",
+  "description": "Search academic papers, citations, and authors, and find related work with semantic similarity — across OpenAlex, arXiv, and PubMed — for literature reviews.",
   "version": "1.0.0",
+  "homepage": "https://foundrynet.io",
   "repository": { "url": "https://github.com/FoundryNet/academic-intel-mcp", "source": "github" },
+  "categories": ["research", "academic", "data", "science"],
+  "tags": ["research papers", "academic search", "citation analysis", "arXiv", "PubMed", "Semantic Scholar", "literature review"],
+  "keywords": ["research papers", "academic search", "citation analysis", "arXiv", "PubMed", "Semantic Scholar", "literature review"],
   "remotes": [ { "type": "streamable-http", "url": "https://academic-intel-mcp-production.up.railway.app/mcp" } ]
 }

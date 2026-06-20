@@ -12,9 +12,9 @@ def register(mcp) -> None:
         agent_id: Optional[str] = None,
         payment_tx: Optional[str] = None,
     ) -> dict:
-        """Semantically similar papers — the "related work" finder. Give a free-text
-        query OR a paper_id and get the most similar papers via pgvector cosine
-        similarity over title+abstract embeddings. Premium.
+        """Find related academic papers by semantic similarity — the "related work"
+        finder for a literature review. Give a free-text query OR a paper_id and get
+        the most similar papers via fastembed semantic similarity (pgvector). Premium.
 
         PAID: $0.02 USDC per query after the daily free allowance (25/day). On a
         402, pay the returned Solana memo and re-call with the SAME args plus

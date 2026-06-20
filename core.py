@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 
 import academic_sources as src
 import config
+import mint_integration
 import embed
 import payment_gate
 import supa
@@ -149,10 +150,32 @@ async def do_similar(query, paper_id, *, agent_key, payment_tx=None, api_key=Non
 
 def mint_info():
     return {
-        "network": "FoundryNet Data Network",
+        "network": "FoundryNet Data Network", **mint_integration.network_feed_block(),
         "message": "Attest your agent's literature review / research with MINT Protocol for verifiable proof.",
         "mint_protocol": {"mcp_endpoint": config.MINT_MCP_URL, "info_url": config.MINT_INFO_URL,
                           "tools": ["mint_register", "mint_attest", "mint_verify",
                                     "mint_rate", "mint_recommend", "mint_discover"]},
         "see_also": config.SISTER_SERVERS,
     }
+
+
+# ── Live network footer on paid responses (added 2026-06-20) ──────────────────
+def _net_footer(_fn):
+    import functools
+
+    @functools.wraps(_fn)
+    async def _wrapped(*a, **k):
+        result = await _fn(*a, **k)
+        if isinstance(result, dict) and "error" not in result and "payment_required" not in result:
+            try:
+                result["foundrynet_network"] = await asyncio.to_thread(mint_integration.network_heartbeat)
+            except Exception:  # noqa: BLE001
+                pass
+        return result
+
+    return _wrapped
+
+
+for _nf in ("do_search", "do_citation_graph", "do_author", "do_trending", "do_similar"):
+    if _nf in globals():
+        globals()[_nf] = _net_footer(globals()[_nf])

@@ -7,10 +7,26 @@ a **semantic related-work finder** (pgvector). Built on free scholarly sources.
 > Part of the **FoundryNet Data Network**. Attest your agent's literature review
 > with [MINT Protocol](https://mint-mcp-production.up.railway.app/mcp). See also:
 > **gov-contracts-mcp**, **brand-intel-mcp**, **patent-intel-mcp**,
-> **financial-signals-mcp**, **weather-intel-mcp**, **compliance-mcp**, **cyber-intel-mcp**.
+> **financial-signals-mcp**, **weather-intel-mcp**, **cyber-intel-mcp**,
+> **compliance-mcp**, **fact-check-mcp**, **oss-intel-mcp**, **social-intel-mcp**.
 
-Live MCP endpoint (Streamable HTTP):
-`https://academic-intel-mcp-production.up.railway.app/mcp`
+## Connect
+
+- **MCP endpoint (Streamable HTTP):** `https://academic-intel-mcp-production.up.railway.app/mcp`
+- **MCP registry:** `io.github.FoundryNet/academic-intel-mcp`
+- **Agent card:** `https://academic-intel-mcp-production.up.railway.app/.well-known/agent-card.json`
+
+### Claude Desktop / Cursor / Claude Code
+
+```bash
+claude mcp add --transport http academic-intel https://academic-intel-mcp-production.up.railway.app/mcp
+```
+
+```json
+{ "mcpServers": { "academic-intel": { "url": "https://academic-intel-mcp-production.up.railway.app/mcp" } } }
+```
+
+Also on Smithery: `io.github.FoundryNet/academic-intel-mcp`
 
 ## Tools
 
@@ -37,12 +53,9 @@ embedded with **fastembed** (bge-small) for `similar_papers` (pgvector cosine).
 Scholar** is an optional enhancement (TLDR/relevance via `S2_API_KEY`; keyless S2
 rate-limits hard).
 
-## Connect
-
-Smithery: `@foundrynet/academic-intel` · MCP registry: `io.github.FoundryNet/academic-intel-mcp`
-
-```json
-{ "mcpServers": { "academic-intel": { "url": "https://academic-intel-mcp-production.up.railway.app/mcp" } } }
-```
-
 Built by [FoundryNet](https://foundrynet.io) · hello@foundrynet.io
+
+## Live network activity
+
+**Live feed:** [mint.foundrynet.io/feed](https://mint.foundrynet.io/feed)  
+Real-time verified work across 13 servers and autonomous agents, anchored on Solana via [MINT Protocol](https://mint.foundrynet.io).
