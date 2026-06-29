@@ -16,12 +16,16 @@ import time
 from fastmcp import FastMCP
 from starlette.requests import Request
 from starlette.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+import event_log
 
 import academic_aggregator as agg
 import config
 import core
+import daily_curator
 import identity
 import payment_gate
+import x402_standard
 import supa
 import tools
 
@@ -41,13 +45,28 @@ else:
 tools.register_all(mcp)
 
 
+# ── okf-reliability-v1: emit reliability metadata on every tool result (#2964) ──
+try:
+    from okf_middleware import ReliabilityMiddleware
+    mcp.add_middleware(ReliabilityMiddleware(server_id="academic-intel"))
+except Exception as _okf_e:  # noqa: BLE001
+    import logging as _okf_log; _okf_log.getLogger(__name__).warning(f"okf middleware not wired: {_okf_e}")
+
+
+@mcp.custom_route("/v1/reliability", methods=["GET"])
+async def _okf_reliability_route(request):
+    from starlette.responses import JSONResponse
+    import okf_endpoint
+    return JSONResponse(okf_endpoint.reliability_payload("academic-intel"))
+
+
 @mcp.custom_route("/health", methods=["GET"])
 async def health(request: Request) -> JSONResponse:
     return JSONResponse({
         "status": "ok", "service": "academic-intel-mcp", "transport": "streamable-http",
         "network": "FoundryNet Data Network",
         "tools": ["search_papers", "paper_detail", "citation_graph", "author_profile",
-                  "trending_research", "similar_papers", "mint_info"],
+                  "trending_research", "similar_papers", "daily_brief", "mint_info"],
         "dataset": "supabase:papers" if supa.configured() else "unconfigured",
         "sources": "openalex + arxiv + pubmed (keyless)" + (" + semantic_scholar" if config.S2_API_KEY else ""),
         "embeddings": config.EMBED_MODEL,
@@ -137,6 +156,15 @@ async def rest_similar(request: Request) -> JSONResponse:
                                        api_key=identity.bearer(request)))
 
 
+@mcp.custom_route("/v1/brief", methods=["POST"])
+async def rest_brief(request: Request) -> JSONResponse:
+    b = await _body(request)
+    return _resp(await core.do_daily_brief(b.get("date"), agent_key=_akey(request, b),
+                                           payment_tx=b.get("payment_tx"),
+                                           api_key=identity.bearer(request),
+                                           stripe_token=b.get("stripe_token") or identity.stripe_token(request)))
+
+
 @mcp.custom_route("/v1/mint-info", methods=["GET", "POST"])
 async def rest_mint(request: Request) -> JSONResponse:
     return JSONResponse(core.mint_info())
@@ -167,7 +195,7 @@ _KEYWORDS = ["academic papers", "research search", "scientific literature", "cit
              "arXiv search", "paper search", "literature review"]
 
 _TOOL_NAMES = ["search_papers", "paper_detail", "citation_graph", "author_profile",
-               "trending_research", "similar_papers", "mint_info"]
+               "trending_research", "similar_papers", "daily_brief", "mint_info"]
 
 _AGENT_CARD = {
     "name": "Academic Research Intelligence MCP",
@@ -269,6 +297,47 @@ async def wellknown_mcp_json(request: Request) -> JSONResponse:
     }, headers={"Cache-Control": "public, max-age=300"})
 
 
+
+# ── Standard x402 compliance (discoverable on x402scan / 402 Index / CDP Bazaar) ──
+@mcp.custom_route("/x402", methods=["GET"])
+async def x402_index(request: Request) -> JSONResponse:
+    return JSONResponse(x402_standard.index(),
+                        headers={"Cache-Control": "public, max-age=300",
+                                 "Access-Control-Allow-Origin": "*"})
+
+
+@mcp.custom_route("/.well-known/x402", methods=["GET"])
+async def x402_wellknown(request: Request) -> JSONResponse:
+    return JSONResponse(x402_standard.index(),
+                        headers={"Cache-Control": "public, max-age=300",
+                                 "Access-Control-Allow-Origin": "*"})
+
+
+@mcp.custom_route("/x402/{tool}", methods=["GET", "POST"])
+async def x402_resource(request: Request) -> JSONResponse:
+    tool = request.path_params["tool"]
+    if tool not in x402_standard.PAID_TOOLS:
+        return JSONResponse({"error": "unknown_resource", "tool": tool,
+                             "available": list(x402_standard.PAID_TOOLS)}, status_code=404)
+    challenge = x402_standard.payment_required_header(tool)
+    return JSONResponse(x402_standard.payment_required(tool), status_code=402,
+                        headers={"Cache-Control": "public, max-age=300",
+                                 "Access-Control-Allow-Origin": "*",
+                                 "PAYMENT-REQUIRED": challenge,
+                                 "X-PAYMENT": challenge,
+                                 "Link": '</openapi.json>; rel="describedby"',
+                                 "WWW-Authenticate": 'x402 version="2"'})
+
+
+@mcp.custom_route("/openapi.json", methods=["GET"])
+async def openapi_doc(request: Request) -> JSONResponse:
+    """OpenAPI 3.1 discovery doc — x402scan requires a spec at a discoverable URL."""
+    return JSONResponse(x402_standard.openapi(),
+                        headers={"Cache-Control": "public, max-age=300",
+                                 "Access-Control-Allow-Origin": "*",
+                                 "Link": '</openapi.json>; rel="describedby"'})
+
+
 def build_dual_app():
     main_app = mcp.http_app(transport="http", path="/mcp")
     sse_app = mcp.http_app(transport="sse", path="/sse")
@@ -282,13 +351,17 @@ def build_dual_app():
         async with main_life(app):
             async with sse_life(app):
                 task = asyncio.create_task(_agg_loop())
+                brief_task = asyncio.create_task(daily_curator.run_daily_loop())
                 try:
                     yield
                 finally:
-                    task.cancel()
-                    with contextlib.suppress(Exception):
-                        await task
+                    for t in (task, brief_task):
+                        t.cancel()
+                        with contextlib.suppress(Exception):
+                            await t
     main_app.router.lifespan_context = _dual_lifespan
+    # Per-call telemetry middleware (fire-and-forget to agents ingest).
+    main_app.add_middleware(BaseHTTPMiddleware, dispatch=event_log.middleware)
     return main_app
 
 
